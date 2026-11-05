@@ -5,6 +5,8 @@
 - **Sposób:** testy lokalne, **bez wywołań modelu i bez sieci**. Prawdziwy provider OpenRouter dostaje podstawiony `fetch`, który zwraca kontrolowane odpowiedzi z HTTP 200. Samo HTTP 200 nie oznacza udanej analizy, decyduje walidacja.
 - **Dane:** wyłącznie fikcyjne.
 
+Testy są w projekcie: `npm test` (`tests/validation.test.mjs`, `tests/security.test.mjs`).
+
 Poniżej dosłowne wyniki uruchomienia (wszystkie zestawy zakończone bez niezgodności).
 
 ## 1. Walidator: 4 przykłady z zadania, odmowa, przerwanie
