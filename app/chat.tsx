@@ -2,14 +2,13 @@
 
 import { useChat } from "@ai-sdk/react";
 import { useState } from "react";
+import Analysis from "./analysis";
 import styles from "./page.module.css";
 
-export default function Chat() {
-  const [input, setInput] = useState("");
-  const { messages, sendMessage, status, error } = useChat();
+type Mode = "chat" | "analysis";
 
-  const isBusy = status === "submitted" || status === "streaming";
-  const canSend = input.trim() !== "" && !isBusy;
+export default function Chat() {
+  const [mode, setMode] = useState<Mode>("chat");
 
   return (
     <main className={styles.main}>
@@ -21,6 +20,46 @@ export default function Chat() {
           </button>
         </form>
       </div>
+      <div className={styles.tabs} role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "chat"}
+          className={mode === "chat" ? styles.tabActive : styles.tab}
+          onClick={() => setMode("chat")}
+        >
+          Czat
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "analysis"}
+          className={mode === "analysis" ? styles.tabActive : styles.tab}
+          onClick={() => setMode("analysis")}
+        >
+          Analiza wiadomości
+        </button>
+      </div>
+      {/* Oba tryby zostają zamontowane, żeby przełączanie nie kasowało treści. */}
+      <div hidden={mode !== "chat"}>
+        <PlainChat />
+      </div>
+      <div hidden={mode !== "analysis"}>
+        <Analysis />
+      </div>
+    </main>
+  );
+}
+
+function PlainChat() {
+  const [input, setInput] = useState("");
+  const { messages, sendMessage, status, error } = useChat();
+
+  const isBusy = status === "submitted" || status === "streaming";
+  const canSend = input.trim() !== "" && !isBusy;
+
+  return (
+    <div className={styles.stack}>
       <div className={styles.chat} aria-label="Rozmowa">
         {messages.map((message) => (
           <div
@@ -63,6 +102,6 @@ export default function Chat() {
           {isBusy ? "Czekaj..." : "Wyślij"}
         </button>
       </form>
-    </main>
+    </div>
   );
 }
