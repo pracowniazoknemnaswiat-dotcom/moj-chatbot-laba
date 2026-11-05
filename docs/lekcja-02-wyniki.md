@@ -95,7 +95,6 @@ Pełny opis: [`prompt-injection-raport.md`](prompt-injection-raport.md). Surowe 
 - [x] Porównanie „sam wynik kontra wynik z obliczeniem” (sekcja 1).
 - [x] 6 wiadomości ćwiczeniowych (sekcja 3).
 - [x] Testy lokalne przeniesione do projektu: `tests/` i `npm test`.
-- [ ] Wdrożyć aplikację na Vercel (import repo, 4 zmienne środowiskowe) i sprawdzić hasło na działającym linku.
 - [ ] Powtórzyć test prompt injection po każdej zmianie modelu lub instrukcji (`npm run test:live`, płatne). Odpowiedzi modelu nie są deterministyczne.
 - [ ] Rozważyć kilka powtórzeń każdej próby (porównanie, ćwiczenia, ataki). Teraz jest po jednej próbie na przypadek.
 
