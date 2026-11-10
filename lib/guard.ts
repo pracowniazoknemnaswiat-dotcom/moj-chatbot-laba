@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { ALLOWED_PRICES_PLN, OFFICIAL_DOMAIN } from "./studio-nova";
 import type { Triage } from "./triage";
 
 // Kontrole backendu niezależne od modelu. Model może dać się zmanipulować,
@@ -42,8 +43,8 @@ export function detectInjection(message: string): string[] {
 
 // Fragmenty instrukcji, które nie mogą trafić do szkicu (wyciek promptu).
 const LEAK_MARKERS = [
-  /Jesteś asystentem Studio Nova/i,
-  /Informacje firmy:/i,
+  /Jesteś asystentem Pracowni/i,
+  /Informacje Pracowni:/i,
   /Reguły (kategorii|priorytetu)/i,
   /Tryb analizy/i,
   /blokada opłaconego spotkania/i,
@@ -56,26 +57,50 @@ function sentences(text: string): string[] {
 }
 const NEGATION = /\bnie\b|\bczy\b/i;
 
+// Oficjalna domena Pracowni (dokładnie ta, bez subdomen i podróbek typu
+// "okno.edu.pl.cos.example") jest dozwolona; każdy inny link jest oznaczany.
+const OFFICIAL_LINK = new RegExp(
+  String.raw`(?<![\w.-])(?:https?:\/\/)?(?:www\.)?` +
+    OFFICIAL_DOMAIN.replaceAll(".", String.raw`\.`) +
+    String.raw`(?![\w-])(?!\.\w)(?:\/[^\s]*)?`,
+  "gi",
+);
+const withoutOfficialLinks = (draft: string) => draft.replace(OFFICIAL_LINK, "");
+
 const DRAFT_RULES: [RegExp, string][] = [
-  [/https?:\/\/|www\.|\b[\w.-]+\.(pl|com|eu|net|example)\b/i, "szkic zawiera link lub adres strony"],
+  [/https?:\/\/|www\.|\b[\w.-]+\.(pl|com|eu|net|org|example)\b/i, "szkic zawiera link lub adres strony"],
   [/\b[\w.+-]+@[\w-]+\.[\w.]+\b/, "szkic zawiera adres e-mail"],
-  [/\d+\s*%|rabat|zniżk|promocj/i, "szkic wspomina rabat lub zniżkę"],
+  // "Promocja" na pakiet 10 godzin jest oficjalna; rabaty i procenty nie.
+  [/\d+\s*%|rabat|zniżk/i, "szkic wspomina rabat lub zniżkę"],
   [/za darmo|bezpłatn|gratis/i, "szkic sugeruje darmową usługę"],
 ];
 
 const PROMISE_RULES: [RegExp, string][] = [
   [/zwrot\w* (został|zostanie|jest)|zwróciliśmy|środki (zostały|wróc)/i, "szkic obiecuje lub potwierdza zwrot"],
   [/zarezerwowan|rezerwacj\w* (jest|została) potwierdz|potwierdzam rezerwacj/i, "szkic potwierdza rezerwację"],
+  [/(jest|został|została|zostanie) zapisan|zapisaliśmy|potwierdzam zapis|zapis\w* (jest|został) potwierdz/i, "szkic potwierdza zapis na zajęcia"],
   [/płatnoś\w* (została|jest) (przyjęta|potwierdzona|zaksięgowana)/i, "szkic potwierdza płatność"],
   [/(wysłaliśmy|wysłałem|wysłałam|została wysłana)/i, "szkic twierdzi, że coś wysłano"],
 ];
 
-function priceProblems(draft: string): string[] {
-  const amounts = [...draft.matchAll(/(\d+(?:[.,]\d+)?)\s*(zł|pln)/gi)].map((m) =>
-    Number(m[1].replace(",", ".")),
+// Kwoty w złotych, także z separatorem tysięcy ("2 199 zł", "2.199 zł"),
+// z groszami ("366,50 zł") i w formie "złotych".
+const AMOUNT =
+  /(\d{1,3}(?:[  .]\d{3})+|\d+)(?:[.,](\d{1,2}))?\s*(?:zł(?:otych|ote|oty)?|pln)(?!\p{L})/giu;
+
+export function amountsInPln(text: string): number[] {
+  return [...text.matchAll(AMOUNT)].map((m) =>
+    Number(`${m[1].replace(/[  .]/g, "")}.${m[2] ?? "0"}`),
   );
-  return amounts.some((a) => a !== 150)
-    ? ["szkic podaje kwotę inną niż cena konsultacji (150 zł)"]
+}
+
+function priceProblems(draft: string): string[] {
+  const allowed: readonly number[] = ALLOWED_PRICES_PLN;
+  const outside = amountsInPln(draft).filter((a) => !allowed.includes(a));
+  return outside.length > 0
+    ? [
+        `szkic podaje kwotę spoza cennika Pracowni (${outside.map((a) => `${a} zł`).join(", ")}; dozwolone: ${allowed.join(", ")} zł)`,
+      ]
     : [];
 }
 
@@ -90,7 +115,9 @@ export function guardResult(message: string, result: Triage): GuardOutcome {
 
   const checks = [
     ...detectInjection(message).map((l) => `wiadomość klienta: ${l}`),
-    ...DRAFT_RULES.filter(([re]) => re.test(result.draft)).map(([, l]) => l),
+    ...DRAFT_RULES.filter(([re]) => re.test(withoutOfficialLinks(result.draft))).map(
+      ([, l]) => l,
+    ),
     ...PROMISE_RULES.filter(([re]) =>
       sentences(result.draft).some((s) => re.test(s) && !NEGATION.test(s)),
     ).map(([, l]) => l),

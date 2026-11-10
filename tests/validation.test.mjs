@@ -33,7 +33,7 @@ const rejected = [
 
 for (const [name, respond, kind, detail] of rejected) {
   test(`odrzuca: ${name}`, async () => {
-    const r = await analyzeMessage(mockModel(respond), "Ile kosztuje konsultacja?");
+    const r = await analyzeMessage(mockModel(respond), "Ile kosztują korepetycje online?");
     assert.equal(r.ok, false);
     assert.equal(r.kind, kind);
     assert.equal("result" in r, false, "błędny wynik nie może trafić do UI");
@@ -42,13 +42,13 @@ for (const [name, respond, kind, detail] of rejected) {
 }
 
 test("przyjmuje poprawny wynik", async () => {
-  const r = await analyzeMessage(mockModel(completion(json(GOOD))), "Ile kosztuje konsultacja?");
+  const r = await analyzeMessage(mockModel(completion(json(GOOD))), "Ile kosztują korepetycje online?");
   assert.equal(r.ok, true);
   assert.deepEqual(r.result, GOOD);
 });
 
 test("żądanie do OpenRoutera: ścisły schemat z materiałów, require_parameters, instrukcja w roli system", async () => {
-  await analyzeMessage(mockModel(completion(json(GOOD))), "Ile kosztuje konsultacja?");
+  await analyzeMessage(mockModel(completion(json(GOOD))), "Ile kosztują korepetycje online?");
   const body = requests.at(-1);
   const schema = body.response_format.json_schema.schema;
   assert.equal(body.response_format.type, "json_schema");
@@ -60,6 +60,6 @@ test("żądanie do OpenRoutera: ścisły schemat z materiałów, require_paramet
   assert.equal(schema.additionalProperties, false);
   assert.equal(body.provider.require_parameters, true);
   assert.deepEqual(body.messages.map((m) => m.role), ["system", "user"]);
-  assert.match(JSON.stringify(body.messages[0].content), /Studio Nova/);
+  assert.match(JSON.stringify(body.messages[0].content), /Pracowni z Oknem na Świat/);
   assert.doesNotMatch(JSON.stringify(body.messages[1].content), /Reguły kategorii/);
 });

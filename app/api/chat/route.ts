@@ -8,28 +8,15 @@ import {
 } from "ai";
 import { cookies } from "next/headers";
 import { getAuthConfig, isSessionValid, SESSION_COOKIE } from "@/lib/auth";
-import { STUDIO_NOVA_BASE } from "@/lib/studio-nova";
+import { FEW_SHOT_EXAMPLES, STUDIO_NOVA_BASE } from "@/lib/studio-nova";
 
 // Instrukcja systemowa zwykłego czatu: dodawana tylko na serwerze.
 const INSTRUCTIONS = `${STUDIO_NOVA_BASE}
 
-Na tym etapie odpowiadaj krótkim tekstem: propozycja odpowiedzi
-do klienta oraz informacja, co wymaga sprawdzenia przez pracownika.
+W trybie czatu odpowiadaj krótko: propozycja odpowiedzi do klienta oraz
+informacja, co wymaga sprawdzenia przez pracownika.
 
-Przykłady formatu odpowiedzi (pokazują układ, nie są informacjami firmy):
-
-Przykład 1
-Klient: Proszę o ofertę dla 8 osób.
-Kategoria: sales
-Szkic: Dziękuję za wiadomość. Czy chodzi o osiem indywidualnych konsultacji,
-czy o spotkanie grupowe? Po doprecyzowaniu przekażemy sprawę pracownikowi.
-Do sprawdzenia: zakres i wycena oferty dla grupy; needs_review = true.
-
-Przykład 2
-Klient: Nie mogę się zalogować.
-Kategoria: support
-Szkic: Napisz proszę, jaki komunikat pojawia się podczas logowania.
-Do sprawdzenia: przyczyna problemu z logowaniem; needs_review = true.`;
+${FEW_SHOT_EXAMPLES}`;
 
 export async function POST(req: Request) {
   const authConfig = getAuthConfig();

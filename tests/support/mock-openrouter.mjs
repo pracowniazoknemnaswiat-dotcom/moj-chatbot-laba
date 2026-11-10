@@ -51,6 +51,6 @@ export const json = (o) => JSON.stringify(o);
 export const GOOD = {
   category: "sales",
   priority: "normal",
-  draft: "Konsultacja kosztuje 150 zł brutto.",
+  draft: "Korepetycje online kosztują 130 zł za godzinę zegarową.",
   needs_review: false,
 };
