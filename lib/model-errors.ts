@@ -1,8 +1,23 @@
 import { APICallError, NoImageGeneratedError } from "ai";
 
+// Błąd, którego treść jest już gotowym komunikatem po polsku (np. rzucony
+// przez nasze narzędzie). AI SDK może go opakować, więc szukamy też w "cause".
+export class FriendlyError extends Error {}
+
+function findFriendly(error: unknown): FriendlyError | undefined {
+  for (let e = error, depth = 0; e && depth < 5; depth++) {
+    if (e instanceof FriendlyError) return e;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
 // Zamienia błąd modelu na zrozumiały komunikat po polsku.
 // Nie przekazujemy użytkownikowi surowej treści błędu z API.
 export function friendlyModelError(error: unknown): string {
+  const friendly = findFriendly(error);
+  if (friendly) return friendly.message;
+
   if (NoImageGeneratedError.isInstance(error)) {
     return "Model nie zwrócił obrazu. Spróbuj inaczej opisać, co ma się znaleźć na obrazie.";
   }

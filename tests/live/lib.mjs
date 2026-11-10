@@ -19,10 +19,11 @@ export async function login(base) {
 
 // Nowa, osobna rozmowa w zwykłym czacie: jedna wiadomość, bez historii.
 export async function askChat(base, cookie, text) {
-  const res = await fetch(`${base}/api/chat`, {
+  const res = await fetch(`${base}/api/agent`, {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
     body: JSON.stringify({
+      mode: "chat",
       messages: [{ id: "1", role: "user", parts: [{ type: "text", text }] }],
     }),
   });
@@ -38,10 +39,10 @@ export async function askChat(base, cookie, text) {
 }
 
 export async function analyze(base, cookie, message) {
-  const res = await fetch(`${base}/api/analyze`, {
+  const res = await fetch(`${base}/api/agent`, {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ mode: "analyze", message }),
   });
   return { http: res.status, body: await res.json() };
 }

@@ -24,10 +24,10 @@ export default function Analysis() {
     setResult(null);
     setRequestError(null);
     try {
-      const res = await fetch("/api/analyze", {
+      const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ mode: "analyze", message }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {

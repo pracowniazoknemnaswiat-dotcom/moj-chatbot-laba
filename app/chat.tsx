@@ -2,13 +2,16 @@
 
 import { useChat } from "@ai-sdk/react";
 import {
+  DefaultChatTransport,
   getToolName,
   isToolUIPart,
   type FileUIPart,
   type SourceUrlUIPart,
+  type ToolUIPart,
   type UIMessage,
 } from "ai";
-import { Fragment, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { GeneratedImageOutput } from "@/lib/image-generation";
 import {
   ALLOWED_IMAGE_TYPES,
   imageFileProblem,
@@ -66,18 +69,13 @@ export default function Chat() {
 // Metadane odpowiedzi bota: model, który faktycznie odpowiedział (z API).
 type ChatMessage = UIMessage<{ modelId?: string | null }>;
 
-// Obraz wygenerowany przez /api/image. "after" = po ilu wiadomościach czatu
-// go pokazać, żeby stał w rozmowie we właściwym miejscu.
-type GeneratedImage = {
-  id: string;
-  after: number;
-  prompt: string;
-  status: "loading" | "done" | "error";
-  image?: string;
-  modelId?: string | null;
-  modelConfirmed?: boolean;
-  error?: string;
-};
+// Przycisk „Wygeneruj obraz” wysyła wiadomość z tym początkiem;
+// model wywołuje wtedy narzędzie generujObraz.
+const IMAGE_REQUEST_PREFIX = "Wygeneruj obraz: ";
+const IMAGE_TOOL_PART = "tool-generujObraz";
+
+// Wynik narzędzia generujObraz (lib/image-generation.ts).
+type ImageToolOutput = Partial<GeneratedImageOutput>;
 
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -88,34 +86,92 @@ function readAsDataUrl(file: File): Promise<string> {
   });
 }
 
+// Wygenerowane obrazy są już na ekranie, a model i tak dostaje zamiast nich
+// tekst „obraz wygenerowany” (toModelOutput). Nie odsyłamy więc na serwer
+// danych obrazu – zapytania nie rosną z każdym obrazem.
+function withoutGeneratedImages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map((message) => ({
+    ...message,
+    parts: message.parts.map((part) =>
+      part.type === IMAGE_TOOL_PART &&
+      "state" in part &&
+      part.state === "output-available"
+        ? { ...part, output: { ...(part.output as ImageToolOutput), image: "" } }
+        : part,
+    ),
+  }));
+}
+
+// Serwer zwraca błędy jako JSON {"error": "..."}; pokazujemy sam komunikat.
+function errorText(message: string): string {
+  try {
+    const data = JSON.parse(message);
+    if (typeof data?.error === "string") return data.error;
+  } catch {
+    // To nie JSON – komunikat ze strumienia.
+  }
+  return message;
+}
+
 function PlainChat() {
   const [input, setInput] = useState("");
   // Kiedy pobrano odpowiedź (a z nią źródła), osobno dla każdej wiadomości.
   const [fetchedAt, setFetchedAt] = useState<Record<string, Date>>({});
   const [photo, setPhoto] = useState<FileUIPart | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
-  const [images, setImages] = useState<GeneratedImage[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  const [transport] = useState(
+    () =>
+      new DefaultChatTransport<ChatMessage>({
+        api: "/api/agent",
+        prepareSendMessagesRequest: ({ id, messages, trigger, messageId }) => ({
+          body: {
+            mode: "chat",
+            id,
+            trigger,
+            messageId,
+            messages: withoutGeneratedImages(messages),
+          },
+        }),
+      }),
+  );
+
   const { messages, sendMessage, status, error } = useChat<ChatMessage>({
+    transport,
     onFinish: ({ message }) =>
       setFetchedAt((prev) => ({ ...prev, [message.id]: new Date() })),
   });
 
   // Blokada od razu przy kliknięciu: stan Reacta odświeża się dopiero po
   // chwili, więc szybkie podwójne kliknięcie mogłoby wysłać dwa zlecenia.
-  const generatingLock = useRef(false);
-
+  const sendLock = useRef(false);
   const isBusy = status === "submitted" || status === "streaming";
-  const isGenerating = images.some((img) => img.status === "loading");
-  // Podczas generowania obrazu wszystkie przyciski są zablokowane.
-  const locked = isBusy || isGenerating;
+  useEffect(() => {
+    if (!isBusy) sendLock.current = false;
+  }, [isBusy]);
+
+  const lastUserText =
+    [...messages]
+      .reverse()
+      .find((m) => m.role === "user")
+      ?.parts.find((p) => p.type === "text")?.text ?? "";
+  const isGenerating = isBusy && lastUserText.startsWith(IMAGE_REQUEST_PREFIX);
+
+  // Podczas odpowiedzi (także generowania obrazu) przyciski są zablokowane.
+  const locked = isBusy;
   const canSend = (input.trim() !== "" || photo !== null) && !locked;
   const canGenerate =
     input.trim() !== "" &&
     input.trim().length <= MAX_IMAGE_PROMPT_LENGTH &&
     !locked &&
     photo === null;
+
+  function send(message: Parameters<typeof sendMessage>[0]) {
+    if (sendLock.current) return;
+    sendLock.current = true;
+    sendMessage(message);
+  }
 
   // Sprawdzenie pliku w całości w przeglądarce – zły plik nie trafia na serwer.
   async function onPhotoChosen(file: File | undefined) {
@@ -136,108 +192,69 @@ function PlainChat() {
     }
   }
 
-  async function generate() {
-    const prompt = input.trim();
-    if (!canGenerate || generatingLock.current) return;
-    generatingLock.current = true;
-    const id = crypto.randomUUID();
-    setImages((prev) => [
-      ...prev,
-      { id, after: messages.length, prompt, status: "loading" },
-    ]);
+  function generate() {
+    if (!canGenerate) return;
+    send({ text: `${IMAGE_REQUEST_PREFIX}${input.trim()}` });
     setInput("");
-
-    const update = (patch: Partial<GeneratedImage>) =>
-      setImages((prev) => prev.map((img) => (img.id === id ? { ...img, ...patch } : img)));
-
-    try {
-      const res = await fetch("/api/image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || typeof data.image !== "string") {
-        update({
-          status: "error",
-          error: data.error ?? "Nie udało się wygenerować obrazu. Spróbuj ponownie.",
-        });
-        return;
-      }
-      update({
-        status: "done",
-        image: data.image,
-        modelId: data.modelId,
-        modelConfirmed: data.modelConfirmed === true,
-      });
-    } catch {
-      update({
-        status: "error",
-        error: "Brak połączenia z serwerem. Sprawdź internet i spróbuj ponownie.",
-      });
-    } finally {
-      generatingLock.current = false;
-    }
   }
-
-  const imagesAfter = (count: number) =>
-    images
-      .filter((img) => img.after === count)
-      .map((img) => <GeneratedImageView key={img.id} item={img} />);
 
   return (
     <div className={styles.stack}>
       <div className={styles.chat} aria-label="Rozmowa">
-        {imagesAfter(0)}
         {messages.map((message, index) => {
           const previous = messages[index - 1];
           const aboutPhoto =
             message.role === "assistant" &&
             previous?.parts.some((p) => p.type === "file");
           return (
-            <Fragment key={message.id}>
-              <div
-                className={
-                  message.role === "user" ? styles.userMessage : styles.botMessage
+            <div
+              key={message.id}
+              className={
+                message.role === "user" ? styles.userMessage : styles.botMessage
+              }
+            >
+              {message.role === "assistant" && (
+                <ToolBadges parts={message.parts} />
+              )}
+              <strong>{message.role === "user" ? "Ty: " : "Bot: "}</strong>
+              {message.parts.map((part, i) => {
+                const key = `${message.id}-${i}`;
+                if (part.type === "text") {
+                  return <span key={key}>{part.text}</span>;
                 }
-              >
-                {message.role === "assistant" && (
-                  <ToolBadges parts={message.parts} />
-                )}
-                <strong>{message.role === "user" ? "Ty: " : "Bot: "}</strong>
-                {message.parts.map((part, i) =>
-                  part.type === "text" ? (
-                    <span key={`${message.id}-${i}`}>{part.text}</span>
-                  ) : null,
-                )}
-                {message.parts.map((part, i) =>
-                  part.type === "file" && part.mediaType.startsWith("image/") ? (
+                if (part.type === "file" && part.mediaType.startsWith("image/")) {
+                  return (
                     // Miniatura dołączonego zdjęcia (data URL z przeglądarki).
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      key={`${message.id}-file-${i}`}
+                      key={key}
                       className={styles.thumbnail}
                       src={part.url}
                       alt={part.filename ?? "Dołączone zdjęcie"}
                     />
-                  ) : null,
-                )}
-                <Sources
-                  sources={message.parts.filter((p) => p.type === "source-url")}
-                  fetchedAt={fetchedAt[message.id]}
-                />
-                {aboutPhoto && message.metadata && (
-                  <ModelNote modelId={message.metadata.modelId} />
-                )}
-              </div>
-              {imagesAfter(index + 1)}
-            </Fragment>
+                  );
+                }
+                if (part.type === IMAGE_TOOL_PART && isToolUIPart(part)) {
+                  return <ImageToolView key={key} part={part} />;
+                }
+                return null;
+              })}
+              <Sources
+                sources={message.parts.filter((p) => p.type === "source-url")}
+                fetchedAt={fetchedAt[message.id]}
+              />
+              {aboutPhoto && message.metadata && (
+                <ModelNote modelId={message.metadata.modelId} />
+              )}
+            </div>
           );
         })}
         {status === "submitted" && (
-          <div className={styles.waiting}>Bot pisze...</div>
+          <div className={styles.waiting}>
+            {isGenerating ? "Generuję obraz…" : "Bot pisze..."}
+          </div>
         )}
-        {error && <div className={styles.error}>{error.message}</div>}
+        {error && <div className={styles.error}>{errorText(error.message)}</div>}
       </div>
 
       {photo && (
@@ -262,7 +279,7 @@ function PlainChat() {
           e.preventDefault();
           if (!canSend) return;
           const text = input.trim() || "Co jest na tym zdjęciu?";
-          sendMessage(photo ? { text, files: [photo] } : { text });
+          send(photo ? { text, files: [photo] } : { text });
           setInput("");
           setPhoto(null);
         }}
@@ -374,10 +391,10 @@ const IMAGE_SUGGESTIONS = [
   },
 ];
 
-function downloadName(item: GeneratedImage): string {
-  const ext = item.image?.match(/^data:image\/(\w+)/)?.[1] ?? "png";
+function downloadName(prompt: string, image: string): string {
+  const ext = image.match(/^data:image\/(\w+)/)?.[1] ?? "png";
   const slug =
-    item.prompt
+    prompt
       .toLowerCase()
       .normalize("NFD")
       .replace(/[̀-ͯ]/g, "")
@@ -388,46 +405,48 @@ function downloadName(item: GeneratedImage): string {
   return `${slug}.${ext === "jpeg" ? "jpg" : ext}`;
 }
 
-function GeneratedImageView({ item }: { item: GeneratedImage }) {
+// Obraz z narzędzia generujObraz, w miejscu wywołania w odpowiedzi bota.
+function ImageToolView({ part }: { part: ToolUIPart }) {
+  const prompt = (part.input as { prompt?: string } | undefined)?.prompt ?? "";
+
+  if (part.state === "output-error") {
+    return <div className={styles.error}>{part.errorText}</div>;
+  }
+  if (part.state !== "output-available") {
+    return (
+      <div className={styles.waiting}>
+        Generuję obraz…
+      </div>
+    );
+  }
+
+  const output = part.output as ImageToolOutput;
+  if (!output.image) return null;
+
   return (
-    <>
-      <div className={styles.userMessage}>
-        <strong>Ty: </strong>🎨 {item.prompt}
-      </div>
-      <div className={styles.botMessage}>
-        <strong>Obraz: </strong>
-        {item.status === "loading" && (
-          <span className={styles.waiting}>Generuję obraz…</span>
-        )}
-        {item.status === "error" && (
-          <div className={styles.error}>{item.error}</div>
-        )}
-        {item.status === "done" && item.image && (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              className={styles.generated}
-              src={item.image}
-              alt={`Wygenerowany obraz: ${item.prompt}`}
-            />
-            <a
-              className={styles.secondaryButton}
-              href={item.image}
-              download={downloadName(item)}
-            >
-              ⬇️ Pobierz
-            </a>
-            <ModelNote modelId={item.modelId} confirmed={item.modelConfirmed} />
-          </>
-        )}
-      </div>
-    </>
+    <div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        className={styles.generated}
+        src={output.image}
+        alt={`Wygenerowany obraz: ${prompt}`}
+      />
+      <a
+        className={styles.secondaryButton}
+        href={output.image}
+        download={downloadName(prompt, output.image)}
+      >
+        ⬇️ Pobierz
+      </a>
+      <ModelNote modelId={output.modelId} confirmed={output.modelConfirmed} />
+    </div>
   );
 }
 
 const TOOL_LABELS: Record<string, string> = {
   web_search: "🔎 wyszukiwanie",
   aktualnyCzas: "🕒 aktualnyCzas",
+  generujObraz: "🎨 generujObraz",
 };
 
 // Etykiety użytych narzędzi (każde raz). Wyszukiwanie OpenRouter działa po
