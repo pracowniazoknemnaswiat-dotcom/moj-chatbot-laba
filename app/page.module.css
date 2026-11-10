@@ -52,6 +52,146 @@
   color: #1e3a8a;
 }
 
+.imageActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.imageActions small {
+  color: #b91c1c;
+}
+
+.secondaryButton {
+  padding: 8px 12px;
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.secondaryButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+a.secondaryButton {
+  display: inline-block;
+  margin-top: 6px;
+  text-decoration: none;
+}
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #555;
+}
+
+.suggestion {
+  padding: 4px 10px;
+  border: 1px dashed #93c5fd;
+  border-radius: 999px;
+  background: white;
+  color: #1d4ed8;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.suggestion:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.linkButton {
+  border: none;
+  background: none;
+  color: #b91c1c;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.attachment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #333;
+}
+
+.thumbnail {
+  display: block;
+  max-width: 160px;
+  max-height: 120px;
+  margin-top: 4px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  object-fit: cover;
+}
+
+.generated {
+  display: block;
+  max-width: 100%;
+  width: 360px;
+  margin-top: 4px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+}
+
+.modelNote {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75em;
+  color: #666;
+}
+
+.toolBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+  white-space: normal;
+}
+
+.toolBadge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  color: #3730a3;
+  font-size: 0.75em;
+}
+
+.sources {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-left: 3px solid #93c5fd;
+  font-size: 0.9em;
+  color: #333;
+  white-space: normal;
+}
+
+.sources ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.sources a {
+  color: #1d4ed8;
+  word-break: break-word;
+}
+
+.sources small {
+  color: #666;
+}
+
 .waiting {
   color: #666;
   font-style: italic;
