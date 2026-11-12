@@ -10,8 +10,16 @@ import {
   type ToolUIPart,
   type UIMessage,
 } from "ai";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { GeneratedImageOutput } from "@/lib/image-generation";
+import {
+  komunikatZatrzymania,
+  krokiZNarzedziami,
+  opisKrokow,
+  opisStatystyk,
+  type PowodZatrzymania,
+} from "@/lib/steps";
 import {
   ALLOWED_IMAGE_TYPES,
   imageFileProblem,
@@ -29,6 +37,9 @@ export default function Chat() {
     <main className={styles.main}>
       <div className={styles.header}>
         <h1>Mój chatbot</h1>
+        <Link className={styles.navLink} href="/dashboard">
+          ✈️ Asystent podróży
+        </Link>
         <form action="/api/logout" method="post">
           <button className={styles.logout} type="submit">
             Wyjdź
@@ -66,8 +77,15 @@ export default function Chat() {
   );
 }
 
-// Metadane odpowiedzi bota: model, który faktycznie odpowiedział (z API).
-type ChatMessage = UIMessage<{ modelId?: string | null }>;
+// Metadane odpowiedzi bota (z serwera): model, który faktycznie odpowiedział,
+// statystyki zadania i powód zatrzymania (limit kroków / wywołań / czasu).
+type ChatMessage = UIMessage<{
+  modelId?: string | null;
+  liczbaKrokow?: number;
+  liczbaWywolan?: number;
+  czasMs?: number;
+  powodZatrzymania?: PowodZatrzymania | null;
+}>;
 
 // Przycisk „Wygeneruj obraz” wysyła wiadomość z tym początkiem;
 // model wywołuje wtedy narzędzie generujObraz.
@@ -214,9 +232,26 @@ function PlainChat() {
               }
             >
               {message.role === "assistant" && (
-                <ToolBadges parts={message.parts} />
+                <>
+                  <StepsList parts={message.parts} />
+                  <ToolBadges parts={message.parts} />
+                  {message.metadata?.powodZatrzymania && (
+                    <div className={styles.limitNote}>
+                      {komunikatZatrzymania(message.metadata.powodZatrzymania)} Poniżej to, co
+                      udało się ustalić.
+                    </div>
+                  )}
+                </>
               )}
               <strong>{message.role === "user" ? "Ty: " : "Bot: "}</strong>
+              {message.role === "assistant" &&
+                message.metadata?.powodZatrzymania &&
+                !message.parts.some((p) => p.type === "text" && p.text.trim()) && (
+                  <span>
+                    Nie zdążyłem przygotować podsumowania. Zadaj pytanie w mniejszych
+                    częściach albo dopytaj o konkretną rzecz.
+                  </span>
+                )}
               {message.parts.map((part, i) => {
                 const key = `${message.id}-${i}`;
                 if (part.type === "text") {
@@ -245,6 +280,9 @@ function PlainChat() {
               />
               {aboutPhoto && message.metadata && (
                 <ModelNote modelId={message.metadata.modelId} />
+              )}
+              {message.role === "assistant" && message.metadata && (
+                <div className={styles.stats}>{opisStatystyk(message.metadata)}</div>
               )}
             </div>
           );
@@ -445,9 +483,31 @@ function ImageToolView({ part }: { part: ToolUIPart }) {
 
 const TOOL_LABELS: Record<string, string> = {
   web_search: "🔎 wyszukiwanie",
-  aktualnyCzas: "🕒 aktualnyCzas",
   generujObraz: "🎨 generujObraz",
+  pogoda: "🌦️ pogoda",
+  waluty: "💱 waluty",
+  swieta: "📅 swieta",
+  wikipedia: "📚 wikipedia",
+  kalkulator: "🧮 kalkulator",
+  czas: "🕒 czas",
+  notatki: "📝 notatki",
+  diagnostyka: "🩺 diagnostyka",
+  ferie: "🏖️ ferie",
 };
+
+// Kroki agenta po kolei: „1. pogoda → 2. waluty → 3. kalkulator”.
+function StepsList({ parts }: { parts: UIMessage["parts"] }) {
+  const kroki = krokiZNarzedziami(parts);
+  if (kroki.length === 0) return null;
+  return (
+    <div className={styles.steps} aria-label="Kroki agenta">
+      Kroki: {opisKrokow(kroki, STEP_NAMES)}
+    </div>
+  );
+}
+
+// Nazwy narzędzi w liście kroków (bez emoji – emoji są na plakietkach).
+const STEP_NAMES: Record<string, string> = { web_search: "wyszukiwanie" };
 
 // Etykiety użytych narzędzi (każde raz). Wyszukiwanie OpenRouter działa po
 // stronie serwera i nie zawsze wysyła osobny wpis o wywołaniu – wtedy

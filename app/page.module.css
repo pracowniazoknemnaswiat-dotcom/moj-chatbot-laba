@@ -159,6 +159,31 @@ a.secondaryButton {
   white-space: normal;
 }
 
+.steps {
+  margin-bottom: 4px;
+  color: #3730a3;
+  font-size: 0.8em;
+  white-space: normal;
+}
+
+.stats {
+  margin-top: 4px;
+  color: #6b7280;
+  font-size: 0.75em;
+  white-space: normal;
+}
+
+.limitNote {
+  margin: 4px 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  font-size: 0.85em;
+  white-space: normal;
+}
+
 .toolBadge {
   display: inline-block;
   padding: 1px 8px;
@@ -209,6 +234,18 @@ a.secondaryButton {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.navLink {
+  margin-left: auto;
+  margin-right: 12px;
+  font-size: 14px;
+  color: #3730a3;
+  text-decoration: none;
+}
+
+.navLink:hover {
+  text-decoration: underline;
 }
 
 .logout {
