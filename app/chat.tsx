@@ -12,6 +12,9 @@ import {
 } from "ai";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+// Bez połączenia z bazą – to jest wyłącznie w lib/supabase.ts (tylko serwer).
+import { conversationHref, NEW_CONVERSATION_HREF } from "@/lib/conversation-link";
+import type { StoredMessage } from "@/lib/conversation-text";
 import type { GeneratedImageOutput } from "@/lib/image-generation";
 import {
   komunikatZatrzymania,
@@ -30,13 +33,27 @@ import styles from "./page.module.css";
 
 type Mode = "chat" | "analysis";
 
-export default function Chat() {
+type ChatProps = {
+  /** Ostatnia rozmowa z bazy (null = brak rozmów albo błąd bazy). */
+  initialConversationId: number | null;
+  initialMessages: StoredMessage[];
+  /** Komunikat, gdy nie udało się wczytać rozmowy z bazy. */
+  storageError: string | null;
+};
+
+export default function Chat(props: ChatProps) {
   const [mode, setMode] = useState<Mode>("chat");
 
   return (
     <main className={styles.main}>
       <div className={styles.header}>
         <h1>Mój chatbot</h1>
+        <Link className={styles.navLink} href="/history">
+          🗂️ Historia
+        </Link>
+        <Link className={styles.navLink} href="/profile">
+          👤 Profil
+        </Link>
         <Link className={styles.navLink} href="/dashboard">
           ✈️ Asystent podróży
         </Link>
@@ -68,7 +85,7 @@ export default function Chat() {
       </div>
       {/* Oba tryby zostają zamontowane, żeby przełączanie nie kasowało treści. */}
       <div hidden={mode !== "chat"}>
-        <PlainChat />
+        <PlainChat {...props} />
       </div>
       <div hidden={mode !== "analysis"}>
         <Analysis />
@@ -80,6 +97,8 @@ export default function Chat() {
 // Metadane odpowiedzi bota (z serwera): model, który faktycznie odpowiedział,
 // statystyki zadania i powód zatrzymania (limit kroków / wywołań / czasu).
 type ChatMessage = UIMessage<{
+  /** Numer rozmowy w bazie (serwer wysyła go na początku odpowiedzi). */
+  conversationId?: number;
   modelId?: string | null;
   liczbaKrokow?: number;
   liczbaWywolan?: number;
@@ -131,8 +150,20 @@ function errorText(message: string): string {
   return message;
 }
 
-function PlainChat() {
+// Wiadomości z bazy (sam tekst) w formacie czatu.
+function fromStored(messages: StoredMessage[]): ChatMessage[] {
+  return messages.map((m) => ({
+    id: m.id,
+    role: m.role,
+    parts: [{ type: "text", text: m.text }],
+  }));
+}
+
+function PlainChat({ initialConversationId, initialMessages, storageError }: ChatProps) {
   const [input, setInput] = useState("");
+  // Numer bieżącej rozmowy w bazie; null = następna wiadomość założy nową.
+  // Czytany przy wysłaniu wiadomości (send), nie podczas renderowania.
+  const conversationId = useRef<number | null>(initialConversationId);
   // Kiedy pobrano odpowiedź (a z nią źródła), osobno dla każdej wiadomości.
   const [fetchedAt, setFetchedAt] = useState<Record<string, Date>>({});
   const [photo, setPhoto] = useState<FileUIPart | null>(null);
@@ -143,23 +174,57 @@ function PlainChat() {
     () =>
       new DefaultChatTransport<ChatMessage>({
         api: "/api/agent",
-        prepareSendMessagesRequest: ({ id, messages, trigger, messageId }) => ({
+        // body = opcje z sendMessage (numer rozmowy podany przy wysłaniu).
+        prepareSendMessagesRequest: ({ id, messages, trigger, messageId, body }) => ({
           body: {
             mode: "chat",
             id,
             trigger,
             messageId,
+            conversationId: (body?.conversationId as number | null | undefined) ?? null,
             messages: withoutGeneratedImages(messages),
           },
         }),
       }),
   );
 
-  const { messages, sendMessage, status, error } = useChat<ChatMessage>({
-    transport,
-    onFinish: ({ message }) =>
-      setFetchedAt((prev) => ({ ...prev, [message.id]: new Date() })),
-  });
+  const [startMessages] = useState(() => fromStored(initialMessages));
+  const { messages, sendMessage, setMessages, clearError, status, error } =
+    useChat<ChatMessage>({
+      transport,
+      messages: startMessages,
+      onFinish: ({ message }) =>
+        setFetchedAt((prev) => ({ ...prev, [message.id]: new Date() })),
+    });
+
+  // Serwer podaje numer rozmowy na początku odpowiedzi – zapamiętujemy go,
+  // żeby kolejne wiadomości trafiły do tej samej rozmowy, i wpisujemy do adresu
+  // (/?c=12), żeby odświeżenie strony (F5) otworzyło tę samą rozmowę.
+  useEffect(() => {
+    const fromServer = [...messages]
+      .reverse()
+      .find((m) => m.metadata?.conversationId)?.metadata?.conversationId;
+    const id = fromServer ?? conversationId.current;
+    if (fromServer) conversationId.current = fromServer;
+    if (id) {
+      const href = conversationHref(id);
+      if (`${window.location.pathname}${window.location.search}` !== href) {
+        window.history.replaceState(null, "", href);
+      }
+    }
+  }, [messages]);
+
+  // Pusta rozmowa; poprzednia zostaje w bazie. Nowy wpis w bazie
+  // powstanie dopiero przy pierwszej wiadomości.
+  function newConversation() {
+    conversationId.current = null;
+    window.history.replaceState(null, "", NEW_CONVERSATION_HREF);
+    setMessages([]);
+    clearError();
+    setFetchedAt({});
+    setPhoto(null);
+    setPhotoError(null);
+  }
 
   // Blokada od razu przy kliknięciu: stan Reacta odświeża się dopiero po
   // chwili, więc szybkie podwójne kliknięcie mogłoby wysłać dwa zlecenia.
@@ -188,7 +253,7 @@ function PlainChat() {
   function send(message: Parameters<typeof sendMessage>[0]) {
     if (sendLock.current) return;
     sendLock.current = true;
-    sendMessage(message);
+    sendMessage(message, { body: { conversationId: conversationId.current } });
   }
 
   // Sprawdzenie pliku w całości w przeglądarce – zły plik nie trafia na serwer.
@@ -218,6 +283,18 @@ function PlainChat() {
 
   return (
     <div className={styles.stack}>
+      <div className={styles.imageActions}>
+        <button
+          type="button"
+          className={styles.secondaryButton}
+          onClick={newConversation}
+          disabled={locked || messages.length === 0}
+          title="Zacznij pustą rozmowę – poprzednia zostaje zapisana"
+        >
+          ➕ Nowa rozmowa
+        </button>
+      </div>
+      {storageError && <div className={styles.error}>{storageError}</div>}
       <div className={styles.chat} aria-label="Rozmowa">
         {messages.map((message, index) => {
           const previous = messages[index - 1];
@@ -492,6 +569,7 @@ const TOOL_LABELS: Record<string, string> = {
   czas: "🕒 czas",
   notatki: "📝 notatki",
   diagnostyka: "🩺 diagnostyka",
+  zapiszProfil: "🧠 zapamiętuję",
   ferie: "🏖️ ferie",
 };
 

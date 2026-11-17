@@ -2,6 +2,13 @@ import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { getAuthConfig, isSessionValid, SESSION_COOKIE } from "@/lib/auth";
+import { parseConversationId } from "@/lib/conversation-link";
+import {
+  loadConversation,
+  loadLatestConversation,
+  StorageError,
+  type LoadedConversation,
+} from "@/lib/conversations";
 import Chat from "./chat";
 import styles from "./page.module.css";
 
@@ -37,7 +44,36 @@ async function Gate({ searchParams }: Pick<PageProps<"/">, "searchParams">) {
     );
   }
 
-  if (isSessionValid(token, config)) return <Chat />;
+  if (isSessionValid(token, config)) {
+    // Odczyt z bazy dopiero po sprawdzeniu sesji. Błąd bazy nie blokuje czatu –
+    // zaczynamy pustą rozmowę i pokazujemy komunikat.
+    //   ?c=12  – rozmowa nr 12 (z historii), ?new=1 – pusta rozmowa, bez parametrów – ostatnia.
+    const params = await searchParams;
+    const wanted = parseConversationId(params.c);
+    const startEmpty = params.new === "1";
+    let loaded: LoadedConversation | null = null;
+    let storageError: string | null = null;
+    try {
+      if (wanted) {
+        loaded = await loadConversation(wanted);
+        if (!loaded) storageError = "Nie znaleziono tej rozmowy. Zaczynasz nową.";
+      } else if (!startEmpty) {
+        loaded = await loadLatestConversation();
+      }
+    } catch (error) {
+      if (!(error instanceof StorageError)) throw error;
+      storageError = error.message;
+    }
+    return (
+      <Chat
+        // Inna rozmowa = nowy czat (bez wiadomości z poprzednio otwartej).
+        key={loaded ? `c-${loaded.id}` : "new"}
+        initialConversationId={loaded?.id ?? null}
+        initialMessages={loaded?.messages ?? []}
+        storageError={storageError}
+      />
+    );
+  }
 
   const { error } = await searchParams;
   const message = typeof error === "string" ? ERROR_MESSAGES[error] : undefined;

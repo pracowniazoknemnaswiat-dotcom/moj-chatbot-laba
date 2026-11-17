@@ -1,0 +1,163 @@
+.main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.header h1 {
+  margin: 0;
+  margin-right: auto;
+  font-size: 1.5rem;
+}
+
+.back,
+.newButton {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  text-decoration: none;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.newButton {
+  background: #111;
+  border-color: #111;
+  color: #fff;
+}
+
+.back:hover,
+.item:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.deleteButton {
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid #e5e5e5;
+  background: transparent;
+  color: #b00020;
+  cursor: pointer;
+  font: inherit;
+}
+
+.deleteButton:hover:not(:disabled) {
+  background: rgba(176, 0, 32, 0.08);
+}
+
+.deleteButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.emptyState {
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px dashed #ccc;
+  line-height: 1.5;
+}
+
+.emptyState p {
+  margin: 0 0 10px;
+}
+
+.emptyGreeting {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.emptySignature {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.emptyState .newButton {
+  display: inline-block;
+  margin-top: 6px;
+}
+
+.item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #e5e5e5;
+  text-decoration: none;
+  color: inherit;
+}
+
+.title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.error {
+  color: #b00020;
+}
+
+@media (prefers-color-scheme: dark) {
+  .newButton {
+    background: #fff;
+    border-color: #fff;
+    color: #111;
+  }
+
+  .item,
+  .deleteButton,
+  .emptyState {
+    border-color: #333;
+  }
+
+  .deleteButton {
+    color: #ff6b81;
+  }
+
+  .back,
+  .back:hover,
+  .item:hover {
+    border-color: #444;
+  }
+
+  .back:hover,
+  .item:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .error {
+    color: #ff6b81;
+  }
+}
