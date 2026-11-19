@@ -691,6 +691,7 @@ export function _wyczyscPamiecWojewodztw() {
 export const WYMAGANE_ZMIENNE = [
   "OPENROUTER_API_KEY",
   "OPENROUTER_MODEL",
+  "OPENROUTER_EMBEDDING_MODEL",
   "CHAT_PASSWORD",
   "SESSION_SECRET",
 ] as const;

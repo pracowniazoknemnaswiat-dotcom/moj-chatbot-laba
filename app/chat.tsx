@@ -17,6 +17,12 @@ import { conversationHref, NEW_CONVERSATION_HREF } from "@/lib/conversation-link
 import type { StoredMessage } from "@/lib/conversation-text";
 import type { GeneratedImageOutput } from "@/lib/image-generation";
 import {
+  similarityPercent,
+  usedSources,
+  withoutSourceLine,
+  type SourceFragment,
+} from "@/lib/knowledge-shared";
+import {
   komunikatZatrzymania,
   krokiZNarzedziami,
   opisKrokow,
@@ -29,6 +35,7 @@ import {
   MAX_IMAGE_PROMPT_LENGTH,
 } from "@/lib/images";
 import Analysis from "./analysis";
+import Markdown from "./markdown";
 import styles from "./page.module.css";
 
 type Mode = "chat" | "analysis";
@@ -53,6 +60,9 @@ export default function Chat(props: ChatProps) {
         </Link>
         <Link className={styles.navLink} href="/profile">
           👤 Profil
+        </Link>
+        <Link className={styles.navLink} href="/upload">
+          📚 Baza wiedzy
         </Link>
         <Link className={styles.navLink} href="/dashboard">
           ✈️ Asystent podróży
@@ -301,6 +311,8 @@ function PlainChat({ initialConversationId, initialMessages, storageError }: Cha
           const aboutPhoto =
             message.role === "assistant" &&
             previous?.parts.some((p) => p.type === "file");
+          // Źródła z bazy wiedzy – gdy są, linia „📎 Źródło” z tekstu zamienia się w listę.
+          const knowledge = message.role === "assistant" ? knowledgeSourcesOf(message.parts) : [];
           return (
             <div
               key={message.id}
@@ -332,7 +344,9 @@ function PlainChat({ initialConversationId, initialMessages, storageError }: Cha
               {message.parts.map((part, i) => {
                 const key = `${message.id}-${i}`;
                 if (part.type === "text") {
-                  return <span key={key}>{part.text}</span>;
+                  if (message.role !== "assistant") return <span key={key}>{part.text}</span>;
+                  const text = knowledge.length ? withoutSourceLine(part.text) : part.text;
+                  return text.trim() ? <Markdown key={key} text={text} /> : null;
                 }
                 if (part.type === "file" && part.mediaType.startsWith("image/")) {
                   return (
@@ -351,6 +365,7 @@ function PlainChat({ initialConversationId, initialMessages, storageError }: Cha
                 }
                 return null;
               })}
+              <KnowledgeSources sources={knowledge} />
               <Sources
                 sources={message.parts.filter((p) => p.type === "source-url")}
                 fetchedAt={fetchedAt[message.id]}
@@ -564,7 +579,8 @@ const TOOL_LABELS: Record<string, string> = {
   pogoda: "🌦️ pogoda",
   waluty: "💱 waluty",
   swieta: "📅 swieta",
-  wikipedia: "📚 wikipedia",
+  wikipedia: "📖 wikipedia",
+  searchKnowledge: "📚 baza wiedzy",
   kalkulator: "🧮 kalkulator",
   czas: "🕒 czas",
   notatki: "📝 notatki",
@@ -585,7 +601,63 @@ function StepsList({ parts }: { parts: UIMessage["parts"] }) {
 }
 
 // Nazwy narzędzi w liście kroków (bez emoji – emoji są na plakietkach).
-const STEP_NAMES: Record<string, string> = { web_search: "wyszukiwanie" };
+const STEP_NAMES: Record<string, string> = {
+  web_search: "wyszukiwanie",
+  searchKnowledge: "baza wiedzy",
+};
+
+/** Fragmenty bazy wiedzy użyte w odpowiedzi (wyniki searchKnowledge + linia „📎 Źródło”). */
+function knowledgeSourcesOf(parts: UIMessage["parts"]): SourceFragment[] {
+  const outputs = parts
+    .filter(
+      (p): p is ToolUIPart =>
+        isToolUIPart(p) && getToolName(p) === "searchKnowledge" && p.state === "output-available",
+    )
+    .map((p) => p.output);
+  const answer = parts
+    .filter((p) => p.type === "text")
+    .map((p) => p.text)
+    .join("\n");
+  return usedSources(outputs, answer);
+}
+
+// Lista źródeł z bazy wiedzy: tytuł, podobieństwo i rozwijany dokładny tekst fragmentu.
+function KnowledgeSources({ sources }: { sources: SourceFragment[] }) {
+  const [open, setOpen] = useState<Set<number>>(new Set());
+  if (sources.length === 0) return null;
+  const toggle = (i: number) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+
+  return (
+    <div className={styles.sources}>
+      <strong>📎 Źródła z bazy wiedzy</strong>
+      <ul className={styles.knowledgeList}>
+        {sources.map((s, i) => (
+          <li key={`${s.tytul}-${i}`}>
+            <span className={styles.knowledgeTitle}>{s.tytul}</span>{" "}
+            <span className={styles.similarity} title="Podobieństwo fragmentu do pytania">
+              {similarityPercent(s.podobienstwo)}
+            </span>{" "}
+            <button
+              type="button"
+              className={styles.fragmentToggle}
+              onClick={() => toggle(i)}
+              aria-expanded={open.has(i)}
+            >
+              {open.has(i) ? "Ukryj fragment" : "Pokaż fragment"}
+            </button>
+            {open.has(i) && <blockquote className={styles.fragmentText}>{s.tresc}</blockquote>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 // Etykiety użytych narzędzi (każde raz). Wyszukiwanie OpenRouter działa po
 // stronie serwera i nie zawsze wysyła osobny wpis o wywołaniu – wtedy

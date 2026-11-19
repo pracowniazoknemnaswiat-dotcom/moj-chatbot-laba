@@ -40,3 +40,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# plan bazy wiedzy (roboczy)
+baza-wiedzy-plan.md
+
+# robocze dokumenty do bazy wiedzy
+faq-pracownia.txt
+regulamin-pracownia.txt
+cennik-pracownia.txt

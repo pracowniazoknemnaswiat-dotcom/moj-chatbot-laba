@@ -2,6 +2,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText } from "ai";
 import { z } from "zod";
 import { brakujaceZrodla, dopiszBrakujace } from "@/lib/dashboard";
+import { chatModelConfig } from "@/lib/model";
 import { friendlyModelError } from "@/lib/model-errors";
 import { brakSesji } from "@/lib/session-guard";
 
@@ -45,11 +46,11 @@ export async function POST(req: Request) {
   const odmowa = await brakSesji();
   if (odmowa) return odmowa;
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  const modelId = process.env.OPENROUTER_MODEL;
-  if (!apiKey || !modelId) {
+  const modelConfig = chatModelConfig();
+  if (!modelConfig) {
     return Response.json({ error: "Brak konfiguracji modelu na serwerze." }, { status: 500 });
   }
+  const { apiKey, modelId } = modelConfig;
 
   const parsed = zapytanieSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {

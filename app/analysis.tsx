@@ -13,6 +13,15 @@ const CATEGORY_LABELS = {
 
 const PRIORITY_LABELS = { normal: "normal", high: "high — pilne" } as const;
 
+/** Linia „📎 Źródło: …” pokazywana osobno, pod szkicem. */
+function splitDraft(draft: string): { body: string; source: string | null } {
+  const lines = draft.trimEnd().split("\n");
+  const i = lines.findIndex((l) => /^\s*📎\s*Źródło:/u.test(l));
+  if (i < 0) return { body: draft, source: null };
+  const source = lines[i].trim();
+  return { body: lines.filter((_, j) => j !== i).join("\n").trimEnd(), source };
+}
+
 export default function Analysis() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -41,6 +50,8 @@ export default function Analysis() {
       setBusy(false);
     }
   }
+
+  const draftParts = result?.ok ? splitDraft(result.result.draft) : null;
 
   return (
     <div className={styles.stack}>
@@ -113,8 +124,27 @@ export default function Analysis() {
           )}
           <div>
             <strong>Szkic odpowiedzi (nie został wysłany):</strong>
-            <p className={styles.draft}>{result.result.draft}</p>
+            <p className={styles.draft}>{draftParts?.body}</p>
+            {draftParts?.source && <p className={styles.source}>{draftParts.source}</p>}
           </div>
+          {result.knowledge && (
+            <details>
+              <summary>
+                {result.knowledge.error
+                  ? `Baza wiedzy niedostępna: ${result.knowledge.error}`
+                  : `Fragmenty z bazy wiedzy (${result.knowledge.fragments.length}), na których oparto szkic`}
+              </summary>
+              <ol className={styles.fragments}>
+                {result.knowledge.fragments.map((f, i) => (
+                  <li key={i}>
+                    <strong>{f.tytul}</strong> · podobieństwo {f.podobienstwo}
+                    <br />
+                    {f.tresc}
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
           <details>
             <summary>JSON</summary>
             <pre className={styles.json}>
